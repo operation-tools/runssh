@@ -2,6 +2,7 @@
 #coding=utf-8
 
 import os
+import commands
 import sys
 import re
 import json
@@ -59,7 +60,7 @@ class Check():
     def _isfile(self, file, default_dir, hint=''):
         try:
             r = re.match('^/.*', file.strip())
-            if not r:
+            if not r and file != 'None':
                 file = '%s/%s' % (default_dir, file)
             if not os.path.isfile(file):
                 return "ERROR: %s %s file not found." % (file, hint)
@@ -94,89 +95,6 @@ class CredentialOptions():
         self.reg_rm = reg_remove
     # 读取凭证文件，返回列表或json数据
     def read(self, type_localtion=(999, "A类0", "B类1"), dict_fields=[]):
-        # 文件中不想要的行，例子文本内容如下：
-        '''
-        NAME   HOST   PORT  USER  PASS   KEY    JUMP  DESC
-        [Normal Server]
-        my_host1  192.168.1.20  22  root  123456  None    0  测试机（用密码登陆的）
-        my_jump  192.168.1.162  22  root  None  key_file    0  跳板机（用密钥登陆）
-
-        [Need Jump Server]
-        my_host2  192.168.2.100  22  root  789123  None    1  需要跳板机才能登陆的测试机（用密码登陆）
-        '''
-        '''
-        reg_remove参数：
-                不加此参数表示不启用；
-                如果我不想要 NAME... 、 [Normal Server] 、 [Need Jump Server] 这三行，可这样配置reg_remove='^NAME.*|^\[.*'
-        
-        type_localtion参数 和 dict_fields=[]参数：
-                不加这两个参数，会返回一个列表，启用dict_fields参数的时候，type_localtion参数才有效；
-                使用dict_fields=[]，会返回一个json数据，上文中my_host1行中有8个字段（空白符隔开），
-                    还有一个隐藏字段，文件行号，所以一共是9个字段，我们可以传递类似以下的字段，以下字段就是json的Key值：
-                    dict_fields=['line', 'name', 'host', 'port', 'username', 'password', 'privateKey', 'jumpTag', 'describe']
-                    得到的结果就像这样：
-                    {
-                        "Content": [{
-                            "line": "3",
-                            "name": "my_host1",
-                            "host": "192.168.1.161",
-                            "port": "22",
-                            "username": "root",
-                            "password": "123456",
-                            "privateKey": "None",
-                            "jumpTag": "0",
-                            "describe": "测试机（用密码登陆的）"
-                        }, {
-                            "line": "4",
-                            "name": "my_jump",
-                            "host": "192.168.1.162",
-                            "port": "22",
-                            "username": "root",
-                            "password": "None",
-                            "privateKey": "key_file",
-                            "jumpTag": "0",
-                            "describe": "跳板机（用密钥登陆）"
-                        }]
-                    }
-                使用type_localtion参数，将json数据根据某个字段分割成两组json数据，该字段就像一个开关（必须为0或1，比如上面的JUMP字段），
-                    由于我们将这个字段定义为jumpTag，所以我们可以这样赋值：  # 分别是 标示字段，字段值为0的组名，字段值为1的组名
-                    type_localtion=('jumpTag', 'normalServer', 'needJumpServer')  
-                    得到的结果就像这样：
-                    {
-                        "normalServer": [{
-                            "line": "3",
-                            "name": "my_host1",
-                            "host": "192.168.1.161",
-                            "port": "22",
-                            "username": "root",
-                            "password": "123456",
-                            "privateKey": "None",
-                            "jumpTag": "0",
-                            "describe": "测试机（用密码登陆的）"
-                        }, {
-                            "line": "4",
-                            "name": "my_jump",
-                            "host": "192.168.1.162",
-                            "port": "22",
-                            "username": "root",
-                            "password": "None",
-                            "privateKey": "key_file",
-                            "jumpTag": "0",
-                            "describe": "跳板机（用密钥登陆）"
-                        }],
-                        "needJumpServer": [{
-                            "line": "7",
-                            "name": "my_host2",
-                            "host": "192.168.2.100",
-                            "port": "22",
-                            "username": "root",
-                            "password": "789123",
-                            "privateKey": "None",
-                            "jumpTag": "1",
-                            "describe": "需要跳板机才能登陆的测试机（用密码登陆）"
-                        }]
-                    }
-        '''
         _list = []
         r_list = []
         a_list = []
@@ -287,17 +205,16 @@ class Command():
 
             # 跳板机
             if remote_cmd:
-                user_type = ssh.expect([']#', ']$'], timeout=self.timeout)
-                if user_type in (0, 1):
+                ssh.expect('[.*@.*]', timeout=self.timeout)
+                if re.search('\s-i\s', remote_cmd):     # 登陆远程主机的命令是否带有-i选项
                     ssh.sendline(remote_cmd)
-                    if re.search('\s-i\s', remote_cmd):     # 登陆远程主机的命令是否带有-i选项
-                        ssh.interact()
-                        exit(0)
-
-                    ssh.expect('password:', timeout=self.timeout)
-                    ssh.sendline(self.password)
                     ssh.interact()
                     exit(0)
+                ssh.sendline(remote_cmd)
+                ssh.expect('password:', timeout=self.timeout)
+                ssh.sendline(self.password)
+                ssh.interact()
+                exit(0)
 
             ssh.interact()
             exit(0)
@@ -317,15 +234,18 @@ class Command():
 
             # 跳板机
             if remote_cmd:
-                user_type = ssh.expect([']#', ']$'], timeout=self.timeout)
-                if user_type in (0, 1):
-                    ssh.sendline(remote_cmd)
-                    if re.search('\s-i\s', remote_cmd):     # 登陆远程主机的命令是否带有-i选项
-                        ssh.interact()
-                        exit(0)
-                    ssh.expect('password:', timeout=self.timeout)
-                    ssh.sendline(self.password)
+                ssh.expect('[.*@.*]', timeout=self.timeout)
+                if re.search('\s-i\s', remote_cmd):     # 登陆远程主机的命令是否带有-i选项
+                    ssh.sendline(
+                    '`echo "%s" | awk -v home=$(ls -d ~/.ssh/) \
+                      \'{if ($7 ~ /^\//){print $0}else{print $1,$2,$3,$4,$5,$6,home""$7,$8,$9,$10}}\'`' % remote_cmd)
+                    ssh.interact()
                     exit(0)
+                ssh.sendline(remote_cmd)
+                ssh.expect('password:', timeout=self.timeout)
+                ssh.sendline(self.password)
+                ssh.interact()
+                exit(0)
 
             ssh.interact()
             exit(0)
@@ -357,13 +277,13 @@ class Command():
     def upload(self, files, dest_dir):
         files = re.sub(r'\[\'|\'\,\s\'|\'\]', ' ', str(files))
         if self.private_key == "None":
-            cmd = "scp -o ConnectTimeout=%s -o StrictHostKeyChecking=no -P %s %s %s@%s:%s" \
+            cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -P %s %s %s@%s:%s" \
                   % (self.timeout, self.port, files, self.username, self.host, dest_dir)
             print cmd
             if self.debug_switch == 0:
                 self.pexpect_passwd(cmd)
 
-        cmd = "scp -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s %s@%s:%s" \
+        cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s %s@%s:%s" \
               % (self.timeout, self.private_key, self.port, files, self.username, self.host, dest_dir)
         print 'The command to login on the remote service:\n\t%s' % cmd
         if self.debug_switch == 0:
@@ -373,14 +293,14 @@ class Command():
     def dowmload(self, files, dest_dir):
         for file in files:
             if self.private_key == "None":
-                cmd = "scp -o ConnectTimeout=%s -o StrictHostKeyChecking=no -P %s %s@%s:%s %s" \
+                cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -P %s %s@%s:%s %s" \
                       % (self.timeout, self.port, self.username, self.host, file, dest_dir)
                 print 'The command to login on the remote service:\n\t%s' % cmd
                 if self.debug_switch == 0:
                     self.pexpect_passwd(cmd)
                 exit(0)
 
-            cmd = "scp -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s@%s:%s %s" \
+            cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s@%s:%s %s" \
                   % (self.timeout, self.private_key, self.port, self.username, self.host, file, dest_dir)
             print 'The command to login on the remote service:\n\t%s' % cmd
             if self.debug_switch == 0:
@@ -390,21 +310,25 @@ class Command():
     # 需要跳板机的 SSH 连接
     def jump_login(self, jump_username, jump_host, jump_port, jump_password, jump_private_key):
         # 用密码登陆跳板机
-        if self.private_key == "None":
-            remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
-                  % (self.timeout, self.port, self.username, self.host)
-            # 用密码登陆远程主机
-            if jump_private_key == "None":
-                cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
-                      % (self.timeout, jump_port, jump_username, jump_host)
+        if jump_private_key == "None":
+            cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
+                  % (self.timeout, jump_port, jump_username, jump_host)
+            # print 'login jump server with password.'
+            ## 用密码登陆远程主机
+            # if jump_private_key == "None":
+            if self.private_key == "None":
+                remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
+                             % (self.timeout, self.port, self.username, self.host)
+                # print 'login remote server with password'
                 print 'The command to login on the jumper service:\n\t%s' % cmd
                 print 'The command to login on the remote service:\n\t%s' % remote_cmd
                 if self.debug_switch == 0:
                     self.pexpect_passwd(cmd, remote_cmd, jump_password)
                 exit(0)
-            # 用密钥登陆远程主机
-            cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
-                % (self.timeout, jump_private_key, jump_port, jump_username, jump_host)
+            ## 用密钥登陆远程主机
+            remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
+                % (self.timeout, self.private_key, self.port, self.username, self.host)
+            # print 'login remote server with key'
             print 'The command to login on the jumper service:\n\t%s' % cmd
             print 'The command to login on the remote service:\n\t%s' % remote_cmd
             if self.debug_switch == 0:
@@ -412,24 +336,27 @@ class Command():
             exit(0)
 
         # 用密钥登陆跳板机
-        remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
-              % (self.timeout, self.private_key, self.port, self.username, self.host)
-        # 用密码登陆远程主机
-        if jump_private_key == "None":
-            cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
-                  % (self.timeout, jump_port, jump_username, jump_host)
+        cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
+              % (self.timeout, jump_private_key, jump_port, jump_username, jump_host)
+        # print 'login jump server with key.'
+        ## 用密码登陆远程主机
+        if self.private_key == "None":
+            remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -p %s %s@%s" \
+                  % (self.timeout, self.port, self.username, self.host)
+            # print 'login remote server with password'
             print 'The command to login on the jumper service:\n\t%s' % cmd
             print 'The command to login on the remote service:\n\t%s' % remote_cmd
             if self.debug_switch == 0:
-                self.pexpect_passwd(cmd, remote_cmd)
+                self.pexpect_key(cmd, remote_cmd)
             exit(0)
-
-        cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
-            % (self.timeout, jump_private_key, jump_port, jump_username, jump_host)
+        ## 用密钥登陆远程主机
+        remote_cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
+            % (self.timeout, self.private_key, self.port, self.username, self.host)
+        # print 'login remote server with key'
         print 'The command to login on the jumper service:\n\t%s' % cmd
         print 'The command to login on the remote service:\n\t%s' % remote_cmd
         if self.debug_switch == 0:
-            self.pexpect_passwd(cmd, remote_cmd)
+            self.pexpect_key(cmd, remote_cmd)
         exit(0)
 
 # 检查环境变量
@@ -517,6 +444,11 @@ def get_service_parameters(dest_name, jump_name=None):      # dest_name 目标�
                 jump_port = jsonpath(nj, expr='$..port')[0]
                 jump_password = jsonpath(nj, expr='$..password')[0]
                 jump_private_key = jsonpath(nj, expr='$..privateKey')[0]
+
+                r = re.match('^/.*', jump_private_key.strip())
+                if not r and jump_private_key != 'None':
+                    jump_private_key = '~/%s' % (jump_private_key)
+
                 break
             count = count + 1
         if count == len(need_jump):
@@ -532,6 +464,7 @@ def get_service_parameters(dest_name, jump_name=None):      # dest_name 目标�
                 port = jsonpath(nm, expr='$..port')[0]
                 password = jsonpath(nm, expr='$..password')[0]
                 private_key = jsonpath(nm, expr='$..privateKey')[0]
+
                 break
             count = count + 1
         if count == len(normal):
@@ -549,6 +482,10 @@ def get_service_parameters(dest_name, jump_name=None):      # dest_name 目标�
                 port = jsonpath(nm, expr='$..port')[0]
                 password = jsonpath(nm, expr='$..password')[0]
                 private_key = jsonpath(nm, expr='$..privateKey')[0]
+
+                r = re.match('^/.*', private_key.strip())
+                if not r and private_key != 'None':
+                    private_key = '%s/%s' % (RUNSSH_DEFAULT_KEY_PATH, private_key)
                 break
             count = count + 1
         if count == len(normal):
@@ -561,7 +498,7 @@ def usage():
     global args, cert_parser, normal_parser, check_parser, version_parser
     format_class = argparse.RawTextHelpFormatter
     parser = argparse.ArgumentParser(
-        usage=' %(prog)s command',
+        usage=' %(prog)s [options] NAME/HOST',
         formatter_class=format_class,
         add_help=True,
     )
@@ -624,13 +561,15 @@ if __name__ == '__main__':
     global version, output
     # 环境变量
     ## RUNSSH配置文件绝对路径
-    RUNSSH_CONFIG = os.environ.get("RUNSSH_CONFIG") if "RUNSSH_CONFIG" in os.environ else '/tmp/runssh.conf'
+    RUNSSH_CONFIG = os.environ.get("RUNSSH_CONFIG") \
+        if "RUNSSH_CONFIG" in os.environ else '%s/.runssh/runssh.conf' % commands.getoutput('ls -d ~')
     ## RUNSSH连接超时时间
     RUNSSH_TIMEOUT = os.environ.get("RUNSSH_TIMEOUT") if "RUNSSH_TIMEOUT" in os.environ else 10
     ## 调试开关 1：开 0：关
     RUNSSH_SWITCH = os.environ.get("RUNSSH_SWITCH") if "RUNSSH_SWITCH" in os.environ else 0
     ## 默认密钥存放路径
-    RUNSSH_DEFAULT_KEY_PATH = os.environ.get("RUNSSH_DEFAULT_KEY_PATH") if "RUNSSH_DEFAULT_KEY_PATH" in os.environ else '~/.ssh'
+    RUNSSH_DEFAULT_KEY_PATH = os.environ.get("RUNSSH_DEFAULT_KEY_PATH") \
+    if "RUNSSH_DEFAULT_KEY_PATH" in os.environ else '%s/.ssh' % commands.getoutput('ls -d ~')
 
     # 参数
     version = '1.0.0'
@@ -687,12 +626,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print "Exit."
         exit(400)
-
-
-
-
-
-
-
-
 

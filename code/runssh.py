@@ -49,7 +49,8 @@ class Check():
     # 合格例子：my_host1
     def name(self, string, hint=''):
         try:
-            reg = '^[a-zA-Z][\w-]+[a-zA-Z0-9]$'
+            # reg = '^[a-zA-Z][\w-]+[a-zA-Z0-9]$'
+            reg = '^[a-zA-Z][\w-]*[a-zA-Z0-9]$|^[a-zA-Z]+$'
             if not re.match(reg, string.strip()):
                 return "ERROR: field format error. expect: %s , input: %s  \n\t %s" % (reg, string, hint)
         except Exception as e:
@@ -206,11 +207,11 @@ class Command():
         except pexpect.EOF:
             print 'ERROR: sub process abort unfortinately'
             ssh.close()
-            exit(400)
+            exit(5100)
         except pexpect.TIMEOUT:
             print 'ERROR: pexpect timeout.'
             ssh.close()
-            exit(400)
+            exit(5101)
 
     def pexpect_key(self, cmd, remote_cmd=None):
     # cmd参数表示能够直接登陆的服务器命令（[NormalServer]列表下），remote_cmd参数表示通过jumper服务器才能登陆的命令（[NeedJumpServer]列表下）
@@ -250,13 +251,15 @@ class Command():
             print 'The command to login on the remote service:\n\t%s' % cmd
             if self.debug_switch == 0:
                 self.pexpect_passwd(cmd)
+            exit(0)
+
         # 密钥登陆远程主机
         cmd = "ssh -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
             % (self.timeout, self.private_key, self.port, self.username, self.host)
         print 'The command to login on the remote service:\n\t%s' % cmd
         if self.debug_switch == 0:
             self.pexpect_key(cmd)
-
+        exit(0)
 
     # SCP 上传本地文件/文件夹到远程服务器
     def upload(self, files, dest_dir):
@@ -267,12 +270,14 @@ class Command():
             print cmd
             if self.debug_switch == 0:
                 self.pexpect_passwd(cmd)
+            exit(0)
 
         cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s %s@%s:%s" \
               % (self.timeout, self.private_key, self.port, files, self.username, self.host, dest_dir)
         print 'The command to login on the remote service:\n\t%s' % cmd
         if self.debug_switch == 0:
             self.pexpect_key(cmd)
+        exit(0)
 
     # SCP 从远程服务器下载文件/文件夹到本地
     def dowmload(self, files, dest_dir):
@@ -283,14 +288,13 @@ class Command():
                 print 'The command to login on the remote service:\n\t%s' % cmd
                 if self.debug_switch == 0:
                     self.pexpect_passwd(cmd)
-                exit(0)
-
-            cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s@%s:%s %s" \
-                  % (self.timeout, self.private_key, self.port, self.username, self.host, file, dest_dir)
-            print 'The command to login on the remote service:\n\t%s' % cmd
-            if self.debug_switch == 0:
-                self.pexpect_key(cmd)
-            exit(0)
+            else:
+                cmd = "scp -r -o ConnectTimeout=%s -o StrictHostKeyChecking=no -i %s -P %s %s@%s:%s %s" \
+                      % (self.timeout, self.private_key, self.port, self.username, self.host, file, dest_dir)
+                print 'The command to login on the remote service:\n\t%s' % cmd
+                if self.debug_switch == 0:
+                    self.pexpect_key(cmd)
+        exit(0)
 
     # SSH 隧道
     def tunnel(self, direction, connect_info):
@@ -312,6 +316,7 @@ class Command():
                 print 'The command of ssh reverse tunnel:\n\t%s' % tunnel_cmd
             if self.debug_switch == 0:
                 self.pexpect_passwd(tunnel_cmd)
+            exit(0)
 
         ## SSH正向隧道
         if direction == '-L':
@@ -325,8 +330,7 @@ class Command():
             print 'The command of ssh reverse tunnel:\n\t%s' % tunnel_cmd
         if self.debug_switch == 0:
             self.pexpect_key(tunnel_cmd)
-
-
+        exit(0)
 
     # 需要跳板机的 SSH 连接
     def jump_login(self, jump_username, jump_host, jump_port, jump_password, jump_private_key):
@@ -400,7 +404,7 @@ class Output():
     # 格式错误
     def format_error(self):
         print 'ERROR: Format error, please use %s --help to see how to use it.' % sys.argv[0]
-        exit(400)
+        exit(5001)
     # 选项错误
     def invalid_option(self, option):
         print "ERROR: Invalid option %s , please use %s --help to see how to use it." % (option, sys.argv[0])
@@ -459,22 +463,22 @@ def check_conf():
 
         if ck_name != None:
             print ck_name
-            exit(400)
+            exit(5002)
         if ck_host != None:
             print ck_host
-            exit(400)
+            exit(5002)
         if ck_port != None:
             print ck_port
-            exit(400)
+            exit(5002)
         if ck_user != None:
             print ck_user
-            exit(400)
+            exit(5002)
         if ck_jtag != None:
             print ck_jtag
-            exit(400)
+            exit(5002)
         if private_key != "None" and ck_key != None:
             print ck_key
-            exit(400)
+            exit(5002)
 
 
 
@@ -679,7 +683,8 @@ if __name__ == '__main__':
         output.format_error()
     except (Exception, AttributeError) as e:
         print "ERROR: An unknown error.%s" % e
+        exit(9999)
     except KeyboardInterrupt:
         print "Exit."
-        exit(400)
+        exit(0)
 

@@ -275,5 +275,21 @@ SSH隧道自带的后台运行并不稳定，我们可以借助autossh命令：
     $ autossh -M 5251 -f -CfNg -L 0.0.0.0:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
 ```
 
+# ERROR Code:
+```
+$ runssh [options] NAME/HOST
+$ echo $?
+```
+
+  错误代码  | 含义 | 
+  ------------- | ------------- 
+ 5001  | runssh命令选项/参数格式错误
+ 5002 | 配置文件字段格式错误
+ 
+ 5100  | 执行pexpect交互命令发生错误
+ 5101 | 执行pexpect交互命令超时
+ KEY | 远程主机的密钥KEY
+ JUMP_TAG | 是否需要跳板机才能登陆 
+ DESCRIBE | 描述信息 
 
 

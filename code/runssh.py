@@ -633,7 +633,7 @@ if __name__ == '__main__':
     if "RUNSSH_DEFAULT_KEY_PATH" in os.environ else '%s/.ssh' % commands.getoutput('ls -d ~')
 
     # 参数
-    VERSION = '1.0.0'
+    VERSION = '1.2.3'
 
     reload(sys)
     sys.setdefaultencoding('utf8')

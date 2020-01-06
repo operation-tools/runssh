@@ -408,11 +408,11 @@ class Output():
     # 选项错误
     def invalid_option(self, option):
         print "ERROR: Invalid option %s , please use %s --help to see how to use it." % (option, sys.argv[0])
-        exit(400)
+        exit(5002)
     # 不存在
     def not_found(self, hint=''):
         print "ERROR: The information could not be found. %s" % (hint)
-        exit(400)
+        exit(5003)
 
 
 # 检查环境变量
@@ -431,10 +431,10 @@ my_host2  192.168.2.100  22  root  789123  None    1  需要跳板机才能登�
     ck_switch = env.switch(RUNSSH_SWITCH, hint='RUNSSH_SWITCH')
     if ck_timeout != None:
         print ck_timeout
-        exit(400)
+        exit(5004)
     if ck_switch != None:
         print ck_switch
-        exit(400)
+        exit(5004)
 
 
 # 检查配置文件
@@ -463,22 +463,22 @@ def check_conf():
 
         if ck_name != None:
             print ck_name
-            exit(5002)
+            exit(5005)
         if ck_host != None:
             print ck_host
-            exit(5002)
+            exit(5005)
         if ck_port != None:
             print ck_port
-            exit(5002)
+            exit(5005)
         if ck_user != None:
             print ck_user
-            exit(5002)
+            exit(5005)
         if ck_jtag != None:
             print ck_jtag
-            exit(5002)
+            exit(5005)
         if private_key != "None" and ck_key != None:
             print ck_key
-            exit(5002)
+            exit(5005)
 
 
 

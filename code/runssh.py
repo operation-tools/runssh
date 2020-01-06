@@ -170,8 +170,8 @@ class Command():
         self.password = password
         self.private_key = private_key
         # 其他参数
-        self.timeout = timeout
-        self.debug_switch = debug_switch
+        self.timeout = int(timeout)
+        self.debug_switch = int(debug_switch)
 
     def pexpect_passwd(self, cmd, remote_cmd=None, jump_password=None):
     # cmd参数表示能够直接登陆的服务器命令（[NormalServer]列表下），remote_cmd参数表示通过jumper服务器才能登陆的命令（[NeedJumpServer]列表下）
@@ -619,7 +619,7 @@ def usage():
 
 if __name__ == '__main__':
     global RUNSSH_CONFIG, RUNSSH_TIMEOUT, RUNSSH_SWITCH, RUNSSH_DEFAULT_KEY_PATH, VERSION
-    global  output
+    global output
     # 环境变量
     ## RUNSSH配置文件绝对路径
     RUNSSH_CONFIG = os.environ.get("RUNSSH_CONFIG") \
@@ -665,7 +665,7 @@ if __name__ == '__main__':
             _jump.jump_login(*jump_param)
             exit(0)
         param = get_service_parameters(_name)
-        _cmd =  Command(*param)
+        _cmd = Command(*param)
         if args.local_files:
             _cmd.upload(args.local_files, args.dest_dir)
             exit(0)

@@ -7,6 +7,9 @@ import sys
 import re
 import json
 import pexpect
+import struct
+import fcntl
+import termios
 import argparse
 from jsonpath import jsonpath
 from collections import OrderedDict
@@ -173,6 +176,19 @@ class Command():
         self.timeout = int(timeout)
         self.debug_switch = int(debug_switch)
 
+    # 获取终端窗口大小
+    def getwinsize(self):
+        """This returns the window size of the child tty.
+        The return value is a tuple of (rows, cols).
+        """
+        if 'TIOCGWINSZ' in dir(termios):
+            TIOCGWINSZ = termios.TIOCGWINSZ
+        else:
+            TIOCGWINSZ = 1074295912L  # Assume
+        s = struct.pack('HHHH', 0, 0, 0, 0)
+        x = fcntl.ioctl(sys.stdout.fileno(), TIOCGWINSZ, s)
+        return struct.unpack('HHHH', x)[0:2]
+
     def pexpect_passwd(self, cmd, remote_cmd=None, jump_password=None):
     # cmd参数表示能够直接登陆的服务器命令（[NormalServer]列表下），remote_cmd参数表示通过jumper服务器才能登陆的命令（[NeedJumpServer]列表下）
         try:
@@ -183,6 +199,8 @@ class Command():
             # ... ...
             # elif choose == 1:
             # ... ...
+            winsize = self.getwinsize()
+            ssh.setwinsize(winsize[0], winsize[1])
             ssh.expect('password:', timeout=self.timeout)
             if jump_password:
                 ssh.sendline(jump_password)
@@ -217,7 +235,8 @@ class Command():
     # cmd参数表示能够直接登陆的服务器命令（[NormalServer]列表下），remote_cmd参数表示通过jumper服务器才能登陆的命令（[NeedJumpServer]列表下）
         try:
             ssh = pexpect.spawn(cmd, timeout=self.timeout)  # logfile=sys.stdout
-
+            winsize = self.getwinsize()
+            ssh.setwinsize(winsize[0], winsize[1])
             # 跳板机
             if remote_cmd:
                 ssh.expect('[.*@.*]', timeout=self.timeout)

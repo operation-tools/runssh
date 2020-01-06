@@ -160,21 +160,6 @@ class CredentialOptions():
         return json.dumps(j, ensure_ascii=False)
 
 
-# 打印错误提示：
-class Output():
-    # 格式错误
-    def format_error(self):
-        print 'ERROR: Format error, please use %s --help to see how to use it.' % sys.argv[0]
-        exit(400)
-    # 选项错误
-    def invalid_option(self, option):
-        print "ERROR: Invalid option %s , please use %s --help to see how to use it." % (option, sys.argv[0])
-        exit(400)
-    # 不存在
-    def not_found(self, hint=''):
-        print "ERROR: The information could not be found. %s" % (hint)
-        exit(400)
-
 class Command():
     def __init__(self, username, host, port, password, private_key, timeout=10, debug_switch=1):
         # 必要的参数
@@ -307,6 +292,42 @@ class Command():
                 self.pexpect_key(cmd)
             exit(0)
 
+    # SSH 隧道
+    def tunnel(self, direction, connect_info):
+        _info = connect_info.split(':')
+        if len(_info) == 2:
+            connect_info = '0.0.0.0:%s:0.0.0.0:%s' % (_info[0], _info[1])
+        elif len(_info) == 4:
+            pass
+        if self.private_key == "None":
+            ## SSH正向隧道
+            if direction == '-L':
+                tunnel_cmd = "ssh -L %s -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -p %s %s@%s" \
+                             % (connect_info, self.port, self.username, self.host)
+                print 'The command of ssh positive tunnel:\n\t%s' % tunnel_cmd
+            ## SSH反向隧道
+            if direction == '-R':
+                tunnel_cmd = "ssh -R %s -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -p %s %s@%s" \
+                             % (connect_info, self.port, self.username, self.host)
+                print 'The command of ssh reverse tunnel:\n\t%s' % tunnel_cmd
+            if self.debug_switch == 0:
+                self.pexpect_passwd(tunnel_cmd)
+
+        ## SSH正向隧道
+        if direction == '-L':
+            tunnel_cmd = "ssh -L %s -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
+                % (connect_info, self.private_key, self.port, self.username, self.host)
+            print 'The command of ssh positive tunnel:\n\t%s' % tunnel_cmd
+        ## SSH反向隧道
+        if direction == '-R':
+            tunnel_cmd = "ssh -R %s -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i %s -p %s %s@%s" \
+                % (connect_info, self.private_key, self.port, self.username, self.host)
+            print 'The command of ssh reverse tunnel:\n\t%s' % tunnel_cmd
+        if self.debug_switch == 0:
+            self.pexpect_key(tunnel_cmd)
+
+
+
     # 需要跳板机的 SSH 连接
     def jump_login(self, jump_username, jump_host, jump_port, jump_password, jump_private_key):
         # 用密码登陆跳板机
@@ -359,6 +380,37 @@ class Command():
             self.pexpect_key(cmd, remote_cmd)
         exit(0)
 
+
+# 打印提示（非Class类）
+class Output():
+    # 输出版本号
+    def version(self, version):
+        print "Version: %s" % version
+        exit(0)
+
+    # 检查环境变量成功
+    def env_ok(self):
+        print 'INFO: Environment variable checked. [OK]'
+        exit(0)
+
+    def conf_ok(self):
+        print "INFO: Configure file checked. [OK]"
+        exit(0)
+
+    # 格式错误
+    def format_error(self):
+        print 'ERROR: Format error, please use %s --help to see how to use it.' % sys.argv[0]
+        exit(400)
+    # 选项错误
+    def invalid_option(self, option):
+        print "ERROR: Invalid option %s , please use %s --help to see how to use it." % (option, sys.argv[0])
+        exit(400)
+    # 不存在
+    def not_found(self, hint=''):
+        print "ERROR: The information could not be found. %s" % (hint)
+        exit(400)
+
+
 # 检查环境变量
 def check_env():
     init_cfg_data = '''NAME   HOST   PORT  USER  PASS   KEY    JUMP_TAG  DESCRIBE
@@ -379,6 +431,7 @@ my_host2  192.168.2.100  22  root  789123  None    1  需要跳板机才能登�
     if ck_switch != None:
         print ck_switch
         exit(400)
+
 
 # 检查配置文件
 def check_conf():
@@ -523,13 +576,17 @@ def usage():
                        help='将本地文件/文件夹上传到远程主机。默认接收路径：/tmp/ ，通过-D选项可更改路径')
     group.add_argument('-d', '--download', dest='remote_files', nargs='+',
                        help='从远程主机下载文件/文件夹到本地。默认接收路径：/tmp/ ，通过-D选项可更改路径')
+    group.add_argument('-L', dest='positive',
+                       help='SSH正向隧道')
+    group.add_argument('-R', dest='reverse',
+                       help='SSH反向隧道')
 
     # 其他选项，--search > other
     parser.add_argument('-D', '--destination', dest='dest_dir',
                         default='/tmp/', help='--download 或 --upload的时候，需要此参数指定接收路径')
 
     parser.add_argument('--search', dest='search_reg',
-                        help='模糊匹配%s中的 NAME|HOST 字段，将查询结果输出。默认是normal类型的服务器，通过--type来更改类型' % RUNSSH_CONFIG)
+                        help='re正则匹配%s中的 NAME|HOST 字段，将查询结果输出。默认是normal类型的服务器，通过--type来更改类型' % RUNSSH_CONFIG)
     parser.add_argument('--type', dest='type', choices=['normal', 'needjump'],
                         default='normal', help='--search的时候，可以用此参数更改要查询的服务器类型。默认值：normal')
 
@@ -537,7 +594,7 @@ def usage():
     reg = '^-+[a-zA-Z]+'
     no_param_opt = ['-h', '--help', '-v', '--check-env', '--check-conf']
     no_host_param_opt = ['--search', '--type']
-    param_opt = ['-j', '--jump', '-u', '--upload', '-d', '--download', '-D', '--destination', '--field']
+    param_opt = ['-j', '--jump', '-u', '--upload', '-d', '--download', '-D', '--destination', '--field', '-L', '-R']
 
 
     # 无参数选项
@@ -557,8 +614,8 @@ def usage():
 
 
 if __name__ == '__main__':
-    global RUNSSH_CONFIG, RUNSSH_TIMEOUT, RUNSSH_SWITCH
-    global version, output
+    global RUNSSH_CONFIG, RUNSSH_TIMEOUT, RUNSSH_SWITCH, RUNSSH_DEFAULT_KEY_PATH, VERSION
+    global  output
     # 环境变量
     ## RUNSSH配置文件绝对路径
     RUNSSH_CONFIG = os.environ.get("RUNSSH_CONFIG") \
@@ -572,7 +629,7 @@ if __name__ == '__main__':
     if "RUNSSH_DEFAULT_KEY_PATH" in os.environ else '%s/.ssh' % commands.getoutput('ls -d ~')
 
     # 参数
-    version = '1.0.0'
+    VERSION = '1.0.0'
 
     reload(sys)
     sys.setdefaultencoding('utf8')
@@ -582,16 +639,13 @@ if __name__ == '__main__':
         if sys.argv[-1] == sys.argv[0]:
             output.format_error()
         if args.version:
-            print "Version: %s" % version
-            exit(0)
+            output.version(VERSION)
         if args.env:
             check_env()
-            print 'INFO: Environment variable checked. [OK]'
-            exit(0)
+            output.env_ok()
         if args.conf:
             check_conf()
-            print "INFO: Configure file checked. [OK]"
-            exit(0)
+            output.conf_ok()
 
         check_env()
         check_conf()
@@ -607,17 +661,19 @@ if __name__ == '__main__':
             _jump.jump_login(*jump_param)
             exit(0)
         param = get_service_parameters(_name)
+        _cmd =  Command(*param)
         if args.local_files:
-            _upload = Command(*param)
-            _upload.upload(args.local_files, args.dest_dir)
+            _cmd.upload(args.local_files, args.dest_dir)
             exit(0)
         if args.remote_files:
-            _dowmload = Command(*param)
-            _dowmload.dowmload(args.remote_files, args.dest_dir)
+            _cmd.dowmload(args.remote_files, args.dest_dir)
             exit(0)
+        if args.positive:
+            _cmd.tunnel('-L', args.positive)
+        if args.reverse:
+            _cmd.tunnel('-R', args.reverse)
 
-        _login = Command(*param)
-        _login.login()
+        _cmd.login()
 
     except IndexError:
         output.format_error()

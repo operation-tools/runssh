@@ -76,6 +76,7 @@ $ vim ~/.bash_profile   # 添加环境变量
     * 使用之前请把默认的主机配置KEY字段设置为None或者删除；
     * [Normal Server] JumpTag字段为0的组，此组填写不需要跳板机登陆的服务器（不按此要求写不会影响脚本使用，仅仅为了方便管理）；
     * [Need Jump Server] JumpTag字段为1的组，此组填写需要跳板机登陆的服务器（不按此要求写不会影响脚本使用，仅仅为了方便管理）；
+    * NAME/HOST字段如果出现重复的，只匹配行号靠前的那行配置；
  
 
 
@@ -110,7 +111,7 @@ ssh -o ConnectTimeout=10  -o StrictHostKeyChecking=no  -p 22 root@192.168.1.73
 $ runssh my_jump   或  $ runssh 192.168.1.20
 
 等于下方命令:
-ssh -o ConnectTimeout=10  -o StrictHostKeyChecking=no  -i ～/.ssh/id_rsa -p 22 root@192.168.1.20
+ssh -o ConnectTimeout=10  -o StrictHostKeyChecking=no  -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
 ```
 
 - 使用跳板机登陆：
@@ -142,7 +143,7 @@ ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -p 22 root@192.168.2.100   
 $ runssh -u /tmp/file.txt -D /root/ my_jump
 
 等于下方命令：
-scp -r -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i /home/wuhaolai/.ssh/id_rsa -P 22  /tmp/file.txt  root@192.168.1.20:/root/
+scp -r -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -P 22  /tmp/file.txt  root@192.168.1.20:/root/
 ```
 
 - scp 上传文件夹和文件：
@@ -159,7 +160,7 @@ scp -r -o ConnectTimeout=10 -o StrictHostKeyChecking=no -P 22  /tmp/file.txt /tm
 $ runssh -d /root/file.txt -D ./  my_jump
 
 等于下方命令：
-scp -r -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i /home/wuhaolai/.ssh/id_rsa -P 22 root@192.168.1.20:/root/file.txt ./
+scp -r -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -P 22 root@192.168.1.20:/root/file.txt ./
 
 
 下载命令有缺陷，因为远程主机的路径不能用tab键补全。
@@ -205,7 +206,74 @@ $ runssh --search '.*host' --type needjump | jq
     }
 ```
 
+### SSH 隧道：
+- 正向隧道：
+```
+本地转发：使用本地端口转发创建ssh隧道
 
+场景：
+    my_jump上提供了服务，监听端口为9100端口。
+    
+    $ nc -zv -w 1 192.168.1.20 9100         # 远程主机端口被防火墙拦截
+        Ncat: Version 7.50 ( https://nmap.org/ncat )
+        Ncat: Connection timed out.
+    $ curl -s --connect-timeout 3 --retry 2 --max-time 8 192.168.1.20:9100  # 无法正常请求服务
+    
+    此时我们需要临时将服务提供给我们其中一个外网地址，当然可以选择开放防火墙，但是效率比较低。
+    所以我们使用ssh隧道
+    
+$ runssh -L 9100:9100 my_jump   # 请勿退出
+$ curl -s --connect-timeout 3 --retry 2 --max-time 8 localhost:9100  # 另外开启一个终端，正常请求服务    
+
+
+等于下方命令：
+ssh -L 0.0.0.0:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+```
+
+- 反向隧道：
+```
+与正向隧道原理一致。
+
+远程转发：使用远程端口转发创建ssh隧道
+
+$ runssh -R 8080:8080 my_jump   # 请勿退出
+
+$ runssh my_jump    # 登陆远程主机
+$ curl -s --connect-timeout 3 --retry 2 --max-time 8 localhost:8080  # 可以在远程主机上访问到本地的8080服务
+
+等于下方命令：
+ssh -R 0.0.0.0:8080:0.0.0.0:8080 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+```
+
+- 正向隧道仅本机可访问：
+```
+如果你想要做正向隧道，但是又不想让本地的其他主机能够访问此服务，可以使用以下方式：
+$ runssh.py -L 127.0.0.1:9100:0.0.0.0:9100 my_jump
+
+等于下方命令：
+ssh -L 127.0.0.1:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+```
+
+
+- 后台运行SSH隧道：
+```
+$ runssh -L 9100:9100 my_jump   # 获取终端命令并退出远程主机
+    ssh -L 0.0.0.0:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+
+
+让SSH隧道在后台运行：
+    格式： ssh -CfNg [ssh隧道选项和参数]
+    例子：
+    $ ssh -CfNg -L 0.0.0.0:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+
+
+
+SSH隧道自带的后台运行并不稳定，我们可以借助autossh命令：
+    格式：autossh -M PORT -f [ssh隧道在后台运行的选项和参数]
+    例子：
+    $ sudo yum -y install autossh   # 安装命令
+    $ autossh -M 5251 -f -CfNg -L 0.0.0.0:9100:0.0.0.0:9100 -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -p 22 root@192.168.1.20
+```
 
 
 

@@ -1,5 +1,5 @@
 # .read() 读取凭证文件，返回列表或json数据：
-## 例子文本内容如下：
+## 例子文本内容如下所示：
         
 ```
 NAME   HOST   PORT  USER  PASS   KEY    JUMP  DESC
